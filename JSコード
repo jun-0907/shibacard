@@ -1,0 +1,404 @@
+document.addEventListener('DOMContentLoaded', () => {
+  let selectedCards = [];
+  let energy = 3;
+  let isPlayerTurn = true;
+  let selectedAttacker = null;
+  let selectedTarget = null;
+
+  const startButton = document.getElementById('start-battle');
+  const attackButton = document.getElementById('attack-button');
+  const skillButton = document.getElementById('skill-button');
+  const endTurnButton = document.getElementById('end-turn');
+
+  // 初期：カードプールの表示を詳細化して選びやすくする
+  document.querySelectorAll('.card-pool .card').forEach(card => {
+    Object.keys(card.dataset).forEach(k => {
+      card.dataset[k] = String(card.dataset[k]);
+    });
+    updateCardDisplay(card);
+    card.addEventListener('click', () => {
+      const id = String(card.dataset.id);
+      if (selectedCards.includes(id)) {
+        selectedCards = selectedCards.filter(c => c !== id);
+        card.classList.remove('selected');
+      } else if (selectedCards.length < 5) {
+        selectedCards.push(id);
+        card.classList.add('selected');
+      }
+      updateSelectionUI();
+    });
+  });
+
+  function updateSelectionUI() {
+    startButton.disabled = selectedCards.length !== 5;
+  }
+  updateSelectionUI();
+
+  startButton.addEventListener('click', () => {
+    document.getElementById('card-selection').style.display = 'none';
+    document.getElementById('battle-field').style.display = 'block';
+
+    const playerCardData = getSelectedCardData();
+    renderCards('player-cards', playerCardData);
+    renderCards('enemy-cards', generateEnemyCards());
+    // ターン開始時はプレイヤーのスキル使用フラグをリセット
+    resetSkillUsage('player');
+    updateBattleUI();
+  });
+
+  function generateEnemyCards() {
+    const enemy = [];
+    for (let i = 1; i <= 5; i++) {
+      const hp = 80 + Math.floor(Math.random() * 40);
+      enemy.push({
+        id: `敵${i}`,
+        hp: hp,
+        maxHp: hp,
+        atk: 20 + Math.floor(Math.random() * 30),
+        def: 5 + Math.floor(Math.random() * 15),
+        heal: 0,
+        skill: 'normal'
+      });
+    }
+    return enemy;
+  }
+
+  function renderCards(containerId, cardData) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    cardData.forEach(data => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      Object.entries(data).forEach(([key, value]) => {
+        card.dataset[key] = String(value);
+      });
+      // スキル使用済みフラグの初期化
+      delete card.dataset._skillUsed;
+      updateCardDisplay(card);
+      card.addEventListener('click', () => handleCardClick(card, containerId));
+      container.appendChild(card);
+    });
+  }
+
+  function updateCardDisplay(card) {
+    const id = card.dataset.id ?? '';
+    const hp = parseInt(card.dataset.hp ?? '0', 10);
+    const maxHp = parseInt(card.dataset.maxHp ?? card.dataset.hp ?? '0', 10);
+    const atk = card.dataset.atk ?? '';
+    const def = card.dataset.def ?? '';
+    const heal = card.dataset.heal ?? '';
+    const skill = card.dataset.skill ?? '';
+
+    const healText = parseInt(heal, 10) > 0 ? `💖 回復: ${heal}` : '';
+    const usedText = card.dataset._skillUsed === 'true' ? '🔒 スキル使用済み' : '';
+    card.innerText =
+      `🆔 ${id}
+🧠 体力: ${hp}/${maxHp}
+🗡 攻撃: ${atk}
+🛡 防御: ${def}
+🔮 スキル: ${skill} ${usedText}
+${healText}`.trim();
+
+    if (hp <= 0) {
+      if (!card.classList.contains('disabled')) card.classList.add('disabled');
+      if (!card.innerText.includes('🛑 戦闘不能')) card.innerText += '\n🛑 戦闘不能';
+    } else {
+      card.classList.remove('disabled');
+    }
+  }
+
+  function handleCardClick(card, side) {
+    if (card.classList.contains('disabled')) return;
+
+    if (side === 'player-cards') {
+      selectedAttacker = card;
+    } else {
+      selectedTarget = card;
+    }
+
+    document.querySelectorAll('.card').forEach(c => {
+      c.classList.remove('attacker-selected', 'target-selected');
+    });
+    if (selectedAttacker && !selectedAttacker.classList.contains('disabled')) selectedAttacker.classList.add('attacker-selected');
+    if (selectedTarget && !selectedTarget.classList.contains('disabled')) selectedTarget.classList.add('target-selected');
+
+    updateBattleUI();
+  }
+
+  attackButton.addEventListener('click', () => {
+    if (!isPlayerTurn || energy < 1 || !selectedAttacker) return;
+    if (selectedAttacker.classList.contains('disabled')) {
+      selectedAttacker = null;
+      updateBattleUI();
+      return;
+    }
+
+    const atk = parseInt(selectedAttacker.dataset.atk, 10) || 0;
+    const skill = selectedAttacker.dataset.skill || 'normal';
+
+    if (skill === 'aoe') {
+      const targets = Array.from(document.querySelectorAll('#enemy-cards .card:not(.disabled)'));
+      targets.forEach(target => applyDamage(target, atk));
+    } else {
+      if (!selectedTarget) return;
+      if (selectedTarget.classList.contains('disabled')) {
+        selectedTarget = null;
+        updateBattleUI();
+        return;
+      }
+      applyDamage(selectedTarget, atk);
+    }
+
+    energy -= 1;
+    sanitizeSelectedRefs();
+    updateBattleUI();
+    checkGameEnd();
+  });
+
+  // スキル使用（プレイヤー）: 使用時に _skillUsed = 'true' を付与
+  skillButton.addEventListener('click', () => {
+    if (!isPlayerTurn || energy < 1 || !selectedAttacker) return;
+    if (selectedAttacker.classList.contains('disabled')) {
+      selectedAttacker = null;
+      updateBattleUI();
+      return;
+    }
+    // 既にそのカードがスキルを使っていれば実行しない
+    if (selectedAttacker.dataset._skillUsed === 'true') return;
+
+    const skill = selectedAttacker.dataset.skill || 'normal';
+
+    if (skill === 'heal') {
+      const healVal = parseInt(selectedAttacker.dataset.heal, 10) || 0;
+      if (healVal > 0) {
+        const hp = parseInt(selectedAttacker.dataset.hp, 10) || 0;
+        const maxHp = parseInt(selectedAttacker.dataset.maxHp, 10) || hp;
+        const newHp = Math.min(maxHp, hp + healVal);
+        selectedAttacker.dataset.hp = String(newHp);
+        updateCardDisplay(selectedAttacker);
+      }
+    } else if (skill === 'buff') {
+      const curAtk = parseInt(selectedAttacker.dataset.atk, 10) || 0;
+      selectedAttacker.dataset.atk = String(curAtk + 10);
+      selectedAttacker.dataset._buffed = 'true';
+    } else if (skill === 'debuff') {
+      if (!selectedTarget || selectedTarget.classList.contains('disabled')) return;
+      const curDef = parseInt(selectedTarget.dataset.def, 10) || 0;
+      selectedTarget.dataset.def = String(Math.max(0, curDef - 5));
+      updateCardDisplay(selectedTarget);
+      selectedTarget.dataset._debuffed = 'true';
+    } else if (skill === 'aoe') {
+      const atk = parseInt(selectedAttacker.dataset.atk, 10) || 0;
+      const targets = Array.from(document.querySelectorAll('#enemy-cards .card:not(.disabled)'));
+      targets.forEach(target => applyDamage(target, atk));
+    }
+
+    // スキル使用フラグを立てる（このターンは二度使えない）
+    selectedAttacker.dataset._skillUsed = 'true';
+    // 表示更新
+    updateCardDisplay(selectedAttacker);
+
+    energy -= 1;
+    sanitizeSelectedRefs();
+    updateBattleUI();
+    checkGameEnd();
+  });
+
+  function applyDamage(target, atk) {
+    const def = parseInt(target.dataset.def ?? '0', 10);
+    const damage = Math.max(0, atk - def);
+    let hp = parseInt(target.dataset.hp ?? '0', 10);
+    hp -= damage;
+    target.dataset.hp = String(hp);
+    updateCardDisplay(target);
+
+    if (hp <= 0) {
+      if (selectedAttacker === target) selectedAttacker = null;
+      if (selectedTarget === target) selectedTarget = null;
+    }
+  }
+
+  function updateBattleUI() {
+    document.getElementById('energy-count').innerText = String(energy);
+    document.getElementById('turn-display').innerText = isPlayerTurn ? 'プレイヤー' : '敵';
+
+    attackButton.disabled = !(isPlayerTurn && energy >= 1 && selectedAttacker && !selectedAttacker.classList.contains('disabled') && (
+      selectedAttacker.dataset.skill === 'aoe' || (selectedTarget && !selectedTarget.classList.contains('disabled'))
+    ));
+
+    // ここで既にそのカードがスキルを使っていたら無効化
+    skillButton.disabled = !(isPlayerTurn && energy >= 1 && selectedAttacker && !selectedAttacker.classList.contains('disabled') && selectedAttacker.dataset.skill && selectedAttacker.dataset._skillUsed !== 'true');
+
+    endTurnButton.disabled = false;
+
+    if (selectedAttacker && selectedAttacker.classList.contains('disabled')) selectedAttacker = null;
+    if (selectedTarget && selectedTarget.classList.contains('disabled')) selectedTarget = null;
+
+    document.querySelectorAll('.card').forEach(c => {
+      c.classList.remove('attacker-selected', 'target-selected');
+    });
+    if (selectedAttacker) selectedAttacker.classList.add('attacker-selected');
+    if (selectedTarget) selectedTarget.classList.add('target-selected');
+  }
+
+  endTurnButton.addEventListener('click', () => {
+    clearTurnTemporaryEffects();
+
+    // ターン切り替え前に相手側のスキル使用フラグをクリアしておく（相手ターン開始時に相手のカードがスキルを使えるようにする）
+    isPlayerTurn = !isPlayerTurn;
+    energy = 3;
+    selectedAttacker = null;
+    selectedTarget = null;
+
+    // 新しく行動する側のカードのスキル使用フラグをリセット
+    resetSkillUsage(isPlayerTurn ? 'player' : 'enemy');
+
+    updateBattleUI();
+
+    if (!isPlayerTurn) {
+      setTimeout(() => {
+        enemyTurn();
+        clearTurnTemporaryEffects();
+        // 敵行動後にプレイヤーのターン開始準備
+        isPlayerTurn = true;
+        energy = 3;
+        sanitizeSelectedRefs();
+        // プレイヤー側のスキル使用フラグをリセット（ターン開始）
+        resetSkillUsage('player');
+        updateBattleUI();
+        checkGameEnd();
+      }, 700);
+    }
+  });
+
+  function enemyTurn() {
+    const enemies = Array.from(document.querySelectorAll('#enemy-cards .card:not(.disabled)'));
+    const players = Array.from(document.querySelectorAll('#player-cards .card:not(.disabled)'));
+    if (enemies.length === 0 || players.length === 0) return;
+
+    // 敵はそれぞれ1回だけ行動（攻撃 or スキル）
+    enemies.forEach(enemy => {
+      // その敵が既にスキルを使っていたら通常攻撃のみ（skill 使用は一回のみ）
+      const atk = parseInt(enemy.dataset.atk ?? '0', 10);
+      const skill = enemy.dataset.skill ?? 'normal';
+
+      if (skill !== 'normal' && enemy.dataset._skillUsed !== 'true') {
+        // 簡易AI: 低HPならheal、aoeなら使う、その他は確率で使う
+        const hp = parseInt(enemy.dataset.hp ?? '0', 10);
+        if (skill === 'heal' && hp < (parseInt(enemy.dataset.maxHp ?? hp, 10) * 0.6)) {
+          // heal
+          const healVal = parseInt(enemy.dataset.heal, 10) || 0;
+          enemy.dataset.hp = String(Math.min(parseInt(enemy.dataset.maxHp ?? enemy.dataset.hp, 10), hp + healVal));
+          enemy.dataset._skillUsed = 'true';
+          updateCardDisplay(enemy);
+          return;
+        }
+        if (skill === 'aoe') {
+          players.forEach(player => applyDamage(player, atk));
+          enemy.dataset._skillUsed = 'true';
+          return;
+        }
+        // それ以外は 30% の確率でスキルを使う（デバフやバフ等）
+        if (Math.random() < 0.3) {
+          if (skill === 'buff') {
+            const curAtk = parseInt(enemy.dataset.atk, 10) || 0;
+            enemy.dataset.atk = String(curAtk + 10);
+            enemy.dataset._buffed = 'true';
+            enemy.dataset._skillUsed = 'true';
+            updateCardDisplay(enemy);
+            return;
+          }
+          if (skill === 'debuff') {
+            const target = players[Math.floor(Math.random() * players.length)];
+            const curDef = parseInt(target.dataset.def, 10) || 0;
+            target.dataset.def = String(Math.max(0, curDef - 5));
+            target.dataset._debuffed = 'true';
+            updateCardDisplay(target);
+            enemy.dataset._skillUsed = 'true';
+            return;
+          }
+        }
+      }
+
+      // スキルを使わなかった場合またはスキル使用済みなら通常攻撃
+      const target = players[Math.floor(Math.random() * players.length)];
+      applyDamage(target, atk);
+    });
+  }
+
+  function getSelectedCardData() {
+    const allCards = Array.from(document.querySelectorAll('.card-pool .card'));
+    return selectedCards.map(id => {
+      const card = allCards.find(c => String(c.dataset.id) === String(id));
+      const hp = parseInt(card.dataset.hp ?? '0', 10);
+      return {
+        id: card.dataset.id,
+        hp: hp,
+        maxHp: hp,
+        atk: parseInt(card.dataset.atk ?? '0', 10),
+        def: parseInt(card.dataset.def ?? '0', 10),
+        heal: parseInt(card.dataset.heal ?? '0', 10),
+        skill: card.dataset.skill
+      };
+    });
+  }
+
+  function clearTurnTemporaryEffects() {
+    document.querySelectorAll('.card').forEach(card => {
+      if (card.dataset._buffed === 'true') {
+        const atk = parseInt(card.dataset.atk ?? '0', 10);
+        card.dataset.atk = String(Math.max(0, atk - 10));
+        delete card.dataset._buffed;
+        updateCardDisplay(card);
+      }
+      if (card.dataset._debuffed === 'true') {
+        delete card.dataset._debuffed;
+      }
+    });
+  }
+
+  function sanitizeSelectedRefs() {
+    if (selectedAttacker && selectedAttacker.classList.contains('disabled')) selectedAttacker = null;
+    if (selectedTarget && selectedTarget.classList.contains('disabled')) selectedTarget = null;
+  }
+
+  // 勝敗判定：自分 or 敵のカードが全滅したらゲーム終了して開始画面へ戻す
+  function checkGameEnd() {
+    const playerAlive = document.querySelectorAll('#player-cards .card:not(.disabled)').length;
+    const enemyAlive = document.querySelectorAll('#enemy-cards .card:not(.disabled)').length;
+
+    if (playerAlive === 0 || enemyAlive === 0) {
+      const winner = enemyAlive === 0 ? 'プレイヤーの勝利！' : '敵の勝利...';
+      alert(winner);
+      resetToStartScreen();
+    }
+  }
+
+  function resetToStartScreen() {
+    document.getElementById('battle-field').style.display = 'none';
+    document.getElementById('card-selection').style.display = 'block';
+    document.getElementById('player-cards').innerHTML = '';
+    document.getElementById('enemy-cards').innerHTML = '';
+    energy = 3;
+    isPlayerTurn = true;
+    selectedAttacker = null;
+    selectedTarget = null;
+    document.querySelectorAll('.card-pool .card').forEach(c => {
+      c.classList.remove('attacker-selected', 'target-selected');
+      updateCardDisplay(c);
+    });
+    updateSelectionUI();
+    updateBattleUI();
+  }
+
+  // 指定サイドのカードの _skillUsed フラグをリセットする
+  function resetSkillUsage(side) {
+    const selector = side === 'player' ? '#player-cards .card' : '#enemy-cards .card';
+    document.querySelectorAll(selector).forEach(card => {
+      delete card.dataset._skillUsed;
+      // 表示更新
+      updateCardDisplay(card);
+    });
+  }
+
+});
