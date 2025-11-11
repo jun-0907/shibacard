@@ -1,0 +1,46 @@
+<html lang="ja">
+<head>
+<script src="script.js" defer></script>
+  <meta charset="UTF-8">
+  <title>カードバトルゲーム</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="card-selection">
+    <h2>カードを5枚選んでください</h2>
+    <div class="card-pool">
+      <!-- プレイヤーカード10枚（例） -->
+      <div class="card" data-id="1" data-hp="100" data-atk="30" data-def="10" data-heal="0" data-skill="normal">カード1<br>♡:100 ⚔:30 🛡:10</div>
+      <div class="card" data-id="2" data-hp="80" data-atk="40" data-def="5" data-heal="10" data-skill="heal">カード2<br>♡:80 ⚔:40 🛡:5</div>
+      <div class="card" data-id="3" data-hp="120" data-atk="20" data-def="20" data-heal="0" data-skill="buff">カード3<br>♡:120 ⚔:20 🛡:20</div>
+      <div class="card" data-id="4" data-hp="90" data-atk="35" data-def="15" data-heal="5" data-skill="heal">カード4<br>♡:90 ⚔:35 🛡:15</div>
+      <div class="card" data-id="5" data-hp="110" data-atk="25" data-def="10" data-heal="0" data-skill="aoe">カード5<br>♡:110 ⚔:25 🛡:10</div>
+      <div class="card" data-id="6" data-hp="70" data-atk="45" data-def="5" data-heal="0" data-skill="normal">カード6<br>♡:70 ⚔:45 🛡:5</div>
+      <div class="card" data-id="7" data-hp="95" data-atk="30" data-def="10" data-heal="10" data-skill="heal">カード7<br>♡:95 ⚔:30 🛡:10</div>
+      <div class="card" data-id="8" data-hp="85" data-atk="40" data-def="10" data-heal="0" data-skill="buff">カード8<br>♡:85 ⚔:40 🛡:10</div>
+      <div class="card" data-id="9" data-hp="100" data-atk="35" data-def="10" data-heal="0" data-skill="debuff">カード9<br>♡:100 ⚔:35 🛡:10</div>
+      <div class="card" data-id="10" data-hp="75" data-atk="50" data-def="5" data-heal="0" data-skill="aoe">カード10<br>♡:75 ⚔50 🛡:5</div>
+    </div>
+    <button id="start-battle" disabled>バトル開始</button>
+  </div>
+
+  <div id="battle-field" style="display:none;">
+    <h2>バトルフィールド</h2>
+    <p>ターン: <span id="turn-display">プレイヤー</span></p>
+    <p>エネルギー: <span id="energy-count">3</span></p>
+
+    <h3>プレイヤーのカード</h3>
+    <div id="player-cards" class="card-row"></div>
+
+    <h3>敵のカード</h3>
+    <div id="enemy-cards" class="card-row"></div>
+
+    <div class="actions">
+      <button id="attack-button">攻撃する</button>
+      <button id="skill-button">スキル発動</button>
+      <button id="end-turn">ターン終了</button>
+    </div>
+  </div>
+
+</body>
+</html>
