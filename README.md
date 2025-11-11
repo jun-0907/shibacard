@@ -1,6 +1,7 @@
 # shibacard
 カードゲーム
 
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <script src="script.js" defer></script>
