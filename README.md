@@ -1,5 +1,4 @@
 # shibacard
-カードゲーム
 
 <html lang="ja">
 <head>
