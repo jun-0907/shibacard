@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>カードバトル（UI改善版・日本語化）</title>
+  <title>カードバトル（UI改善・日本語化）</title>
   <style>
     :root{
       --bg:#f4f6f8; --card-bg:#fff; --card-border:#cfcfcf; --primary:#2196f3; --muted:#666;
@@ -32,12 +32,11 @@
     .buff-list{font-size:13px;margin:4px 0}
     .badge{display:inline-block;padding:4px 8px;border-radius:12px;background:#f0f0f0;font-size:12px;margin-right:6px}
     .special-badge{background:#fff4e5;border:1px solid #ffd7a8;color:#b35900}
-    .buff-badge{background:#e8f5e9;border:1px solid #c8e6c9;color:var(--buff)}
-    .debuff-badge{background:#ffebee;border:1px solid #ffcdd2;color:var(--debuff)}
+    .buff-badge{background:#e8f5e9;border:1px solid #c8e6c9;color:var(--buff);padding:3px 6px;border-radius:8px;margin-right:6px}
+    .debuff-badge{background:#ffebee;border:1px solid #ffcdd2;color:var(--debuff);padding:3px 6px;border-radius:8px;margin-right:6px}
     .small{font-size:12px;color:var(--muted)}
     .buff-remaining{font-weight:700;color:var(--primary)}
     @media (max-width:1000px){ #game-root{grid-template-columns:1fr} #detail-panel{position:static} .card{width:120px} }
-    /* カード選択画面用詳細 (右パネルの視認性に合わせる) */
     #selection-detail { margin-top:10px; font-size:13px; color:var(--muted); }
     .jp-label { color:var(--muted); font-size:12px; display:inline-block; width:86px; }
   </style>
@@ -102,7 +101,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  // ========== 設定（既存の定義を日本語表示向けにそのまま使用） ==========
+  // ========== カード定義 ==========
   const cardPoolConfig = [
     { id:'1',  name:'挑発兵',   hp:100, atk:20, def:12, heal:0,  skill:'buff',    cost:2,  hpCost:0, hpCostPercent:0, buffParams:{hp:1,atk:1,def:1,heal:1}, buffDuration:2, buffTarget:'self',    buffPermanent:false, buffChanceRepeat:0.0, special:['taunt'], attackTarget:'enemySingle' },
     { id:'2',  name:'戦闘医',   hp:80,  atk:15, def:8,  heal:20, skill:'heal',    cost:3,  hpCost:0, hpCostPercent:0, buffParams:{hp:1,atk:1,def:1,heal:1.2}, buffDuration:1, buffTarget:'all',     buffPermanent:false, buffChanceRepeat:0.0, special:[], attackTarget:'enemySingle' },
@@ -116,7 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
     { id:'10', name:'破滅者',   hp:75,  atk:48, def:5,  heal:0,  skill:'none',    cost:5,  hpCost:0, hpCostPercent:0, buffParams:{hp:1,atk:1,def:1,heal:1}, buffDuration:0, buffTarget:'self',    buffPermanent:false, buffChanceRepeat:0.0, special:[], attackTarget:'allExceptSelf' }
   ];
 
-  // ========== 状態変数（既定値） ==========
+  // ========== 状態 ==========
   let selectedCards = [];
   let energy = 10;
   let playerMaxEnergy = 10;
@@ -126,7 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedAttacker = null;
   let selectedTarget = null;
 
-  // ========== DOM 要素 ==========
+  // ========== DOM ==========
   const poolEl = document.querySelector('.card-pool');
   const startButton = document.getElementById('start-battle');
   const attackButton = document.getElementById('attack-button');
@@ -154,7 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const dTemp = document.getElementById('d-temp');
   const dPermDebuff = document.getElementById('d-perm-debuff');
 
-  // ========== プール初期化（選択画面でも詳細を表示する） ==========
+  // ========== プール初期化（選択画面で詳細を表示） ==========
   function buildCardPoolDOM(){
     poolEl.innerHTML = '';
     cardPoolConfig.forEach(cfg => {
@@ -178,9 +177,10 @@ document.addEventListener('DOMContentLoaded', () => {
       el.dataset._attackTarget = cfg.attackTarget || 'enemySingle';
       el.dataset._special = JSON.stringify(cfg.special || []);
       el.innerText = `${cfg.name}\n♡:${cfg.hp} ⚔:${cfg.atk} 🛡:${cfg.def}\nスキル:${humanSkill(cfg.skill)}\n行動コスト:${cfg.cost}\n攻撃: ${humanAttackTarget(cfg.attackTarget)}`;
+
+      // クリックで選択状態の切替と「カード詳細」パネルに表示
       el.addEventListener('click', () => {
         const id = String(el.dataset.id);
-        // 選択/詳細表示両方
         if (selectedCards.includes(id)) {
           selectedCards = selectedCards.filter(c => c !== id);
           el.classList.remove('selected');
@@ -189,10 +189,14 @@ document.addEventListener('DOMContentLoaded', () => {
           el.classList.add('selected');
         }
         updateSelectionUI();
-        renderSelectionDetail(el);
+        renderDetail(el); // ここで右側の「カード詳細」パネルに表示
       });
-      // hover/keyboard also show details for deck-builder convenience
-      el.addEventListener('mouseover', () => renderSelectionDetail(el));
+
+      // ホバーでも詳細を表示（選択画面での確認を快適にする）
+      el.addEventListener('mouseover', () => {
+        renderDetail(el);
+      });
+
       poolEl.appendChild(el);
     });
     updateSelectionUI();
@@ -205,7 +209,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (selectedCards.length === 0) selectionDetail.style.display = 'none';
   }
 
-  // selection detail: show card info in Japanese when hovering/selecting in selection screen
   function renderSelectionDetail(cardEl) {
     if (!cardEl) { selectionDetail.style.display = 'none'; return; }
     selectionDetail.style.display = 'block';
@@ -225,7 +228,6 @@ document.addEventListener('DOMContentLoaded', () => {
        <div class="small">特性: ${specials}</div>`;
   }
 
-  // human readable mappings (Japanese)
   function humanSkill(s) {
     if (!s) return '-';
     if (s === 'normal') return '通常';
@@ -255,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return s;
   }
 
-  // ========== 戦闘開始・デッキ作成 ==========
+  // ========== 戦闘開始 ==========
   startButton.addEventListener('click', () => {
     document.getElementById('card-selection').style.display = 'none';
     document.getElementById('battle-field').style.display = 'block';
@@ -265,7 +267,6 @@ document.addEventListener('DOMContentLoaded', () => {
     updateBattleUI();
     energy = playerMaxEnergy;
     updateEnergyUI();
-    // clear selection detail on start
     selectionDetail.style.display = 'none';
   });
 
@@ -346,7 +347,6 @@ document.addEventListener('DOMContentLoaded', () => {
       delete card.dataset._attacked;
       updateCardDisplay(card);
       card.addEventListener('click', () => {
-        const container = document.getElementById(containerId);
         handleCardClick(card, containerId);
         renderDetail(card);
       });
@@ -406,7 +406,6 @@ document.addEventListener('DOMContentLoaded', () => {
 バフ: ${tempText || 'なし'}
 ${attackedText}`.trim();
 
-    // 色付けの補助: 一時バフ表示は detail で色分けするためここはシンプルに
     if (rawHp <= 0) {
       if (!card.classList.contains('disabled')) card.classList.add('disabled');
       if (!card.innerText.includes('🛑 戦闘不能')) card.innerText += '\n🛑 戦闘不能';
@@ -438,10 +437,8 @@ ${attackedText}`.trim();
     dAttackTarget.innerText = humanAttackTarget(card.dataset._attackTarget);
     const specials = JSON.parse(card.dataset._special || '[]');
     dSpecials.innerHTML = specials.length ? specials.map(s=>`<span class="badge special-badge">${specialToJapanese(s)}</span>`).join('') : 'なし';
-    // 永続バフ
     const perm = JSON.parse(card.dataset._buffsPermanent || '{"hp":1,"atk":1,"def":1,"heal":1}');
     dPerm.innerHTML = `体力 × ${perm.hp}, 攻撃 × ${perm.atk}, 防御 × ${perm.def}, 回復 × ${perm.heal}`;
-    // 一時バフ（色分け：倍率>1 を緑、<1 を赤）
     const temp = JSON.parse(card.dataset._buffsTempList || '[]');
     if (temp.length===0) dTemp.innerText='なし'; else {
       dTemp.innerHTML = temp.map(t=>{
@@ -453,7 +450,6 @@ ${attackedText}`.trim();
         return `<div>${parts.join(' ')} <span class="buff-remaining">（残:${t.remainingTurns}）</span></div>`;
       }).join('');
     }
-    // 永続デバフ（上書き）
     dPermDebuff.innerHTML = card.dataset._permanentDebuff ? (() => {
       const pd = JSON.parse(card.dataset._permanentDebuff);
       const parts = [];
@@ -465,7 +461,7 @@ ${attackedText}`.trim();
     })() : 'なし';
   }
 
-  // ========== 基本ロジック（applyDamage / applyBuffToCard / 攻撃・スキル等） ==========
+  // ========== ロジック（ダメージ/バフ/攻撃/スキル/AI/ターン管理） ==========
   function applyDamage(target, atkRaw, options = {}) {
     if (!target) return;
     if (parseInt(target.dataset._invincibleRemaining || '0', 10) > 0) return;
@@ -481,7 +477,6 @@ ${attackedText}`.trim();
       if (selectedTarget === target) selectedTarget = null;
     }
     if (detailEl.style.display!=='none' && detailEl) {
-      // refresh detail if showing this card
       const showingId = dName.innerText;
       if (showingId === target.dataset.name) renderDetail(target);
     }
@@ -706,7 +701,7 @@ ${attackedText}`.trim();
     return specials.includes('doubleEnergyRegen');
   }
 
-  // ========== 敵AI（挑発優先・スキル使用） ==========
+  // ========== 敵AI ==========
   function enemyTurn() {
     const enemies = Array.from(document.querySelectorAll('#enemy-cards .card:not(.disabled)'));
     const players = Array.from(document.querySelectorAll('#player-cards .card:not(.disabled)'));
@@ -790,7 +785,7 @@ ${attackedText}`.trim();
     });
   }
 
-  // ========== ターン管理 / エネルギー回復 / 一時バフ更新 ==========
+  // ========== ターン管理 ==========
   function endPlayerTurn() {
     decrementTempBuffsAndClear();
     isPlayerTurn = !isPlayerTurn;
