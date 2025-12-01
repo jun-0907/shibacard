@@ -1,4 +1,4 @@
-# Shibacard
+# shibacard
 
 <html lang="ja">
 <head>
